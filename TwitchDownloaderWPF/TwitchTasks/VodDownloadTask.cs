@@ -2,6 +2,7 @@
 using System.Threading;
 using System.Threading.Tasks;
 using TwitchDownloaderCore;
+using TwitchDownloaderCore.Extensions;
 using TwitchDownloaderCore.Options;
 using TwitchDownloaderWPF.Utils;
 
@@ -29,6 +30,18 @@ namespace TwitchDownloaderWPF.TwitchTasks
 
         public override async Task RunAsync()
         {
+            if (DownloadOptions.DelayDownload)
+            {
+                ChangeStatus(TwitchTaskStatus.Waiting);
+
+                var videoMonitor = new LiveVideoMonitor(DownloadOptions.Id);
+                while (await videoMonitor.IsVideoRecording())
+                {
+                    var waitTime = Random.Shared.NextDouble(8, 14);
+                    await Task.Delay(TimeSpan.FromSeconds(waitTime));
+                }
+            }
+
             if (TokenSource.IsCancellationRequested)
             {
                 TokenSource.Dispose();
@@ -40,6 +53,7 @@ namespace TwitchDownloaderWPF.TwitchTasks
             var progress = new WpfTaskProgress(i => Progress = i, s => DisplayStatus = s);
             VideoDownloader downloader = new VideoDownloader(DownloadOptions, progress);
             ChangeStatus(TwitchTaskStatus.Running);
+
             try
             {
                 await downloader.DownloadAsync(TokenSource.Token);

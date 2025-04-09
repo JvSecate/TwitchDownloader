@@ -160,10 +160,19 @@ namespace TwitchDownloaderWPF
                     numStartMinute.Value = 0;
                     numStartSecond.Value = 0;
                 }
-                numStartHour.Maximum = (int)vodLength.TotalHours;
+
+                if (vodLength > TimeSpan.Zero)
+                {
+                    numStartHour.Maximum = (int)vodLength.TotalHours;
+                    numEndHour.Maximum = (int)vodLength.TotalHours;
+                }
+                else
+                {
+                    numStartHour.Maximum = 48;
+                    numEndHour.Maximum = 48;
+                }
 
                 numEndHour.Value = (int)vodLength.TotalHours;
-                numEndHour.Maximum = (int)vodLength.TotalHours;
                 numEndMinute.Value = vodLength.Minutes;
                 numEndSecond.Value = vodLength.Seconds;
                 labelLength.Text = vodLength.ToString("c");
@@ -302,7 +311,7 @@ namespace TwitchDownloaderWPF
             if (checkStart.IsChecked.GetValueOrDefault())
             {
                 var beginTime = new TimeSpan((int)numStartHour.Value, (int)numStartMinute.Value, (int)numStartSecond.Value);
-                if (beginTime.TotalSeconds >= vodLength.TotalSeconds)
+                if (vodLength > TimeSpan.Zero && beginTime.TotalSeconds >= vodLength.TotalSeconds)
                 {
                     return false;
                 }
@@ -388,11 +397,13 @@ namespace TwitchDownloaderWPF
             };
             settings.ShowDialog();
             btnDonate.Visibility = Settings.Default.HideDonation ? Visibility.Collapsed : Visibility.Visible;
+            statusImage.Visibility = Settings.Default.ReduceMotion ? Visibility.Collapsed : Visibility.Visible;
         }
 
         private void Page_Loaded(object sender, RoutedEventArgs e)
         {
             btnDonate.Visibility = Settings.Default.HideDonation ? Visibility.Collapsed : Visibility.Visible;
+            statusImage.Visibility = Settings.Default.ReduceMotion ? Visibility.Collapsed : Visibility.Visible;
         }
 
         private void checkStart_OnCheckStateChanged(object sender, RoutedEventArgs e)

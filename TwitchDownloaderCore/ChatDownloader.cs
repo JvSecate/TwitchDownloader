@@ -5,6 +5,7 @@ using System.IO.Compression;
 using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Json;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -43,7 +44,7 @@ namespace TwitchDownloaderCore
             _cacheDir = CacheDirectoryService.GetCacheDirectory(downloadOptions.TempFolder);
         }
 
-        private static async Task<List<Comment>> DownloadSection(Range downloadRange, string videoId, IProgress<int> progress, ITaskLogger logger, ChatFormat format, CancellationToken cancellationToken)
+        private async Task<List<Comment>> DownloadSection(Range downloadRange, string videoId, DateTime videoCreatedAt, bool runToEnd, IProgress<int> downloadProgress, CancellationToken cancellationToken)
         {
             var comments = new List<Comment>();
             int videoStart = downloadRange.Start.Value;
@@ -55,7 +56,7 @@ namespace TwitchDownloaderCore
             double errorCount = 0;
             double nullCount = 0;
 
-            while (latestMessage < videoEnd)
+            while (runToEnd || latestMessage < videoEnd)
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
@@ -93,7 +94,7 @@ namespace TwitchDownloaderCore
                         throw;
                     }
 
-                    logger.LogVerbose($"Exception '{ex.Message}' thrown at {latestMessage}s ({cursor}) in range {downloadRange}. Current error factor: {errorCount}.");
+                    _progress.LogVerbose($"Exception '{ex.Message}' thrown at {latestMessage}s ({cursor}) in range {downloadRange}. Current error factor: {errorCount}.");
                     await Task.Delay((int)(1_000 * errorCount), cancellationToken);
                     continue;
                 }
@@ -106,7 +107,7 @@ namespace TwitchDownloaderCore
                         throw new Exception("Received too many null comment lists. Try reducing your download threads.");
                     }
 
-                    logger.LogVerbose($"Received null comment list at {latestMessage}s ({cursor}) in range {downloadRange}. Current null factor: {nullCount}.");
+                    _progress.LogVerbose($"Received null comment list at {latestMessage}s ({cursor}) in range {downloadRange}. Current null factor: {nullCount}.");
                     await Task.Delay((int)(100 * nullCount), cancellationToken);
                     continue;
                 }
@@ -115,10 +116,10 @@ namespace TwitchDownloaderCore
                 nullCount = Math.Max(0, nullCount - BACK_OFF_FACTOR);
                 errorCount = Math.Max(0, errorCount - BACK_OFF_FACTOR);
 
-                var convertedComments = ConvertComments(commentResponse.data.video, format);
+                var convertedComments = ConvertComments(commentResponse.data.video, videoCreatedAt);
                 foreach (var comment in convertedComments)
                 {
-                    if (comment.content_offset_seconds >= videoStart && comment.content_offset_seconds < videoEnd)
+                    if (comment.content_offset_seconds >= videoStart && (runToEnd || comment.content_offset_seconds < videoEnd))
                     {
                         comments.Add(comment);
                     }
@@ -135,7 +136,10 @@ namespace TwitchDownloaderCore
                 cursor = commentResponse.data.video.comments.edges.Last().cursor;
 
                 var percent = (int)Math.Floor((latestMessage - videoStart) / videoDuration * 100);
-                progress.Report(percent);
+                if (runToEnd)
+                    percent = Math.Min(percent, 99);
+
+                downloadProgress.Report(percent);
 
                 if (isFirst)
                 {
@@ -146,7 +150,7 @@ namespace TwitchDownloaderCore
             return comments;
         }
 
-        private static List<Comment> ConvertComments(CommentVideo video, ChatFormat format)
+        private List<Comment> ConvertComments(CommentVideo video, DateTime videoCreatedAt)
         {
             List<Comment> returnList = new List<Comment>(video.comments.edges.Count);
 
@@ -157,10 +161,16 @@ namespace TwitchDownloaderCore
                     continue;
 
                 var oldComment = comment.node;
+
+                // As of April 2025, Twitch returns comment.createdAt as local time but uses UTC formatting in the request
+                var newCreatedAt = oldComment.createdAt - videoCreatedAt < TimeSpan.FromMinutes(-5) // Sometimes Twitch takes a few minutes to register the creation of a video
+                    ? DateTime.SpecifyKind(oldComment.createdAt, DateTimeKind.Local).ToUniversalTime()
+                    : oldComment.createdAt;
+
                 var newComment = new Comment
                 {
                     _id = oldComment.id,
-                    created_at = oldComment.createdAt,
+                    created_at = newCreatedAt,
                     channel_id = video.creator?.id ?? "", // Deliberate empty string for ChatJson.UpgradeChatJson
                     content_type = "video",
                     content_id = video.id,
@@ -176,7 +186,7 @@ namespace TwitchDownloaderCore
 
                 const int AVERAGE_WORD_LENGTH = 5; // The average english word is ~4.7 chars. Round up to partially account for spaces
                 var bodyStringBuilder = new StringBuilder(oldComment.message.fragments.Count * AVERAGE_WORD_LENGTH);
-                if (format == ChatFormat.Text)
+                if (downloadOptions.DownloadFormat == ChatFormat.Text)
                 {
                     // Optimize allocations for writing text chats
                     foreach (var fragment in oldComment.message.fragments)
@@ -292,6 +302,16 @@ namespace TwitchDownloaderCore
 
             chatRoot.comments = await DownloadComments(cancellationToken, chatRoot.video, connectionCount);
 
+            // Sometimes the API returns a video length of 0. Assume the last comment is when the video ends
+            if (chatRoot.video.length <= 0 && chatRoot.comments.LastOrDefault() is { } lastComment)
+            {
+                chatRoot.video.length = lastComment.content_offset_seconds;
+                if (chatRoot.video.end <= 0)
+                {
+                    chatRoot.video.end = lastComment.content_offset_seconds;
+                }
+            }
+
             if (downloadOptions.EmbedData && (downloadOptions.DownloadFormat is ChatFormat.Json or ChatFormat.Html))
             {
                 await EmbedImages(chatRoot, cancellationToken);
@@ -372,7 +392,10 @@ namespace TwitchDownloaderCore
                 chatRoot.video.length = videoInfoResponse.data.video.lengthSeconds;
                 chatRoot.video.viewCount = videoInfoResponse.data.video.viewCount;
                 chatRoot.video.game = videoInfoResponse.data.video.game?.displayName ?? "Unknown";
-                connectionCount = downloadOptions.DownloadThreads;
+                var downloadLength = chatRoot.video.end - chatRoot.video.start;
+                connectionCount = downloadLength / downloadOptions.DownloadThreads < 1
+                    ? Math.Max((int)downloadLength, 1)
+                    : downloadOptions.DownloadThreads;
 
                 GqlVideoChapterResponse videoChapterResponse = await TwitchHelper.GetOrGenerateVideoChapters(long.Parse(videoId), videoInfoResponse.data.video);
                 chatRoot.video.chapters.EnsureCapacity(videoChapterResponse.data.video.moments.edges.Count);
@@ -468,7 +491,10 @@ namespace TwitchDownloaderCore
                 var start = videoStart + chunkSize * i;
                 var end = Math.Min(videoEnd, start + chunkSize);
                 var downloadRange = new Range(start, end);
-                downloadTasks.Add(DownloadSection(downloadRange, video.id, taskProgress, _progress, downloadOptions.DownloadFormat, cancellationToken));
+
+                var runToEnd = !downloadOptions.TrimEnding && i == connectionCount - 1;
+
+                downloadTasks.Add(DownloadSection(downloadRange, video.id, video.created_at, runToEnd, taskProgress, cancellationToken));
             }
 
             await Task.WhenAll(downloadTasks);
@@ -480,8 +506,38 @@ namespace TwitchDownloaderCore
                 .ToHashSet(new CommentIdEqualityComparer())
                 .ToList();
 
+            AdjustCommentOffsets(video, commentList);
+
             commentList.Sort(new CommentOffsetComparer());
             return commentList;
+        }
+
+        // Some old VODs have comments offset by up to an hour. Try to fix them based on the creation times
+        private void AdjustCommentOffsets(Video video, List<Comment> commentList)
+        {
+            if (commentList.Count == 0)
+            {
+                return;
+            }
+
+            var estimatedOffset = TimeSpan.FromSeconds(commentList[0].content_offset_seconds) - (commentList[0].created_at - video.created_at);
+            estimatedOffset = TimeSpan.FromTicks(
+                (long)Math.Min(estimatedOffset.Ticks, commentList[0].content_offset_seconds * TimeSpan.TicksPerSecond)
+            );
+
+            // If comments are within a few seconds, they're probably roughly in sync with the video
+            if (estimatedOffset.TotalSeconds < 5)
+            {
+                return;
+            }
+
+            _progress.LogInfo($"Video comments are offset by ~{estimatedOffset.TotalSeconds:F0} seconds. Adjusting offsets...");
+
+            var commentSpan = CollectionsMarshal.AsSpan(commentList);
+            foreach (var comment in commentSpan)
+            {
+                comment.content_offset_seconds -= estimatedOffset.TotalSeconds;
+            }
         }
 
         private async Task EmbedImages(ChatRoot chatRoot, CancellationToken cancellationToken)

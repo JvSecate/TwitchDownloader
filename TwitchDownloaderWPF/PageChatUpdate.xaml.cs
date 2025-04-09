@@ -137,8 +137,17 @@ namespace TwitchDownloaderWPF
                     {
                         VideoLength = TimeSpan.FromSeconds(videoInfo.data.video.lengthSeconds);
                         labelLength.Text = VideoLength.ToString("c");
-                        numStartHour.Maximum = (int)VideoLength.TotalHours;
-                        numEndHour.Maximum = (int)VideoLength.TotalHours;
+                        if (VideoLength > TimeSpan.Zero)
+                        {
+                            numStartHour.Maximum = (int)VideoLength.TotalHours;
+                            numEndHour.Maximum = (int)VideoLength.TotalHours;
+                        }
+                        else
+                        {
+                            numStartHour.Maximum = 48;
+                            numEndHour.Maximum = 48;
+                        }
+
                         ViewCount = videoInfo.data.video.viewCount;
                         Game = videoInfo.data.video.game?.displayName;
 
@@ -384,11 +393,13 @@ namespace TwitchDownloaderWPF
             };
             settings.ShowDialog();
             btnDonate.Visibility = Settings.Default.HideDonation ? Visibility.Collapsed : Visibility.Visible;
+            statusImage.Visibility = Settings.Default.ReduceMotion ? Visibility.Collapsed : Visibility.Visible;
         }
 
         private void Page_Loaded(object sender, RoutedEventArgs e)
         {
             btnDonate.Visibility = Settings.Default.HideDonation ? Visibility.Collapsed : Visibility.Visible;
+            statusImage.Visibility = Settings.Default.ReduceMotion ? Visibility.Collapsed : Visibility.Visible;
         }
 
         private void checkEmbedMissing_Checked(object sender, RoutedEventArgs e)

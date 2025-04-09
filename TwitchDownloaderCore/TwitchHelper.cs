@@ -34,7 +34,7 @@ namespace TwitchDownloaderCore
             {
                 RequestUri = new Uri("https://gql.twitch.tv/gql"),
                 Method = HttpMethod.Post,
-                Content = new StringContent("{\"query\":\"query{video(id:\\\"" + videoId + "\\\"){title,thumbnailURLs(height:180,width:320),createdAt,lengthSeconds,owner{id,displayName,login},viewCount,game{id,displayName,boxArtURL},description}}\",\"variables\":{}}", Encoding.UTF8, "application/json")
+                Content = new StringContent("{\"query\":\"query{video(id:\\\"" + videoId + "\\\"){title,thumbnailURLs(height:180,width:320),createdAt,lengthSeconds,owner{id,displayName,login},viewCount,game{id,displayName,boxArtURL},description,status}}\",\"variables\":{}}", Encoding.UTF8, "application/json")
             };
             request.Headers.Add("Client-ID", "kimne78kx3ncx6brgo4mv6wki5h1ko");
             using var response = await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
@@ -153,13 +153,13 @@ namespace TwitchDownloaderCore
             return gqlClipTokenResponses;
         }
 
-        public static async Task<GqlVideoSearchResponse> GetGqlVideos(string channelName, string cursor = "", int limit = 50)
+        public static async Task<GqlVideoSearchResponse> GetGqlVideos(string channelName, string cursor = "", int limit = 50, string type = "")
         {
             var request = new HttpRequestMessage()
             {
                 RequestUri = new Uri("https://gql.twitch.tv/gql"),
                 Method = HttpMethod.Post,
-                Content = new StringContent("{\"query\":\"query{user(login:\\\"" + channelName + "\\\"){videos(first: " + limit + "" + (cursor == "" ? "" : ",after:\\\"" + cursor + "\\\"") + ") { edges { node { title, id, lengthSeconds, previewThumbnailURL(height: 180, width: 320), createdAt, viewCount, game { id, displayName } }, cursor }, pageInfo { hasNextPage, hasPreviousPage }, totalCount }}}\",\"variables\":{}}", Encoding.UTF8, "application/json")
+                Content = new StringContent("{\"query\":\"query{user(login:\\\"" + channelName + "\\\"){videos(first: " + limit + "" + (cursor == "" ? "" : ",after:\\\"" + cursor + "\\\"") + (type == "" ? "" : ",type:" + type) + ") { edges { node { title, id, lengthSeconds, previewThumbnailURL(height: 180, width: 320), createdAt, viewCount, game { id, displayName } }, cursor }, pageInfo { hasNextPage, hasPreviousPage }, totalCount }}}\",\"variables\":{}}", Encoding.UTF8, "application/json")
             };
             request.Headers.Add("Client-ID", "kd1unb4b3q4t58fwlpcbzcbnm76a8fp");
             using var response = await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
@@ -189,24 +189,63 @@ namespace TwitchDownloaderCore
 
             if (getBttv)
             {
-                emoteResponse.BTTV = await GetBttvEmotesMetadata(streamerId, cancellationToken);
+                try
+                {
+                    emoteResponse.BTTV = await GetBttvEmotesMetadata(streamerId, cancellationToken);
+                }
+                catch (HttpRequestException ex)
+                {
+                    LogProviderException(ex, "BetterTTV", logger);
+                }
             }
 
             cancellationToken.ThrowIfCancellationRequested();
 
             if (getFfz)
             {
-                emoteResponse.FFZ = await GetFfzEmotesMetadata(streamerId, cancellationToken);
+                try
+                {
+                    emoteResponse.FFZ = await GetFfzEmotesMetadata(streamerId, cancellationToken);
+                }
+                catch (HttpRequestException ex)
+                {
+                    LogProviderException(ex, "FFZ", logger);
+                }
             }
 
             cancellationToken.ThrowIfCancellationRequested();
 
             if (getStv)
             {
-                emoteResponse.STV = await GetStvEmotesMetadata(streamerId, allowUnlistedEmotes, logger, cancellationToken);
+                try
+                {
+                    emoteResponse.STV = await GetStvEmotesMetadata(streamerId, allowUnlistedEmotes, logger, cancellationToken);
+                }
+                catch (HttpRequestException ex)
+                {
+                    LogProviderException(ex, "7TV", logger);
+                }
             }
 
             return emoteResponse;
+
+            static void LogProviderException(HttpRequestException ex, string providerName, ITaskLogger logger)
+            {
+                string message;
+                if (ex.Message.Contains("HttpClient.Timeout"))
+                {
+                    message = $"{providerName} timed out.";
+                }
+                else
+                {
+                    message = ex.StatusCode.HasValue
+                        ? $"{providerName} returned {(int)ex.StatusCode}: {ex.StatusCode}."
+                        : ex.Message;
+                }
+
+                // Message ends with a '.'
+                logger.LogError($"{message} {providerName} emotes may not be present for this session.");
+            }
         }
 
         private static async Task<List<EmoteResponseItem>> GetBttvEmotesMetadata(int streamerId, CancellationToken cancellationToken)
@@ -402,17 +441,9 @@ namespace TwitchDownloaderCore
                 {
                     await FetchEmoteImages(comments, emoteDataResponse.BTTV, returnList, alreadyAdded, bttvFolder, logger, cancellationToken);
                 }
-                catch (HttpRequestException e)
+                catch (HttpRequestException ex)
                 {
-                    var message = e.StatusCode != null
-                        ? $"BetterTTV returned HTTP {e.StatusCode}."
-                        : e.Message;
-
-                    logger.LogError($"{message} Some BTTV emotes may not be present for this session.");
-                }
-                catch (TaskCanceledException ex) when (ex.Message.Contains("HttpClient.Timeout"))
-                {
-                    logger.LogError("BetterTTV timed out. Some BTTV emotes may not be present for this session.");
+                    LogProviderException(ex, "BetterTTV", logger);
                 }
             }
 
@@ -422,17 +453,9 @@ namespace TwitchDownloaderCore
                 {
                     await FetchEmoteImages(comments, emoteDataResponse.FFZ, returnList, alreadyAdded, ffzFolder, logger, cancellationToken);
                 }
-                catch (HttpRequestException e)
+                catch (HttpRequestException ex)
                 {
-                    var message = e.StatusCode != null
-                        ? $"FFZ returned HTTP {e.StatusCode}."
-                        : e.Message;
-
-                    logger.LogError($"{message} Some FFZ emotes may not be present for this session.");
-                }
-                catch (TaskCanceledException ex) when (ex.Message.Contains("HttpClient.Timeout"))
-                {
-                    logger.LogError("FFZ timed out. Some FFZ emotes may not be present for this session.");
+                    LogProviderException(ex, "FFZ", logger);
                 }
             }
 
@@ -442,30 +465,22 @@ namespace TwitchDownloaderCore
                 {
                     await FetchEmoteImages(comments, emoteDataResponse.STV, returnList, alreadyAdded, stvFolder, logger, cancellationToken);
                 }
-                catch (HttpRequestException e)
+                catch (HttpRequestException ex)
                 {
-                    var message = e.StatusCode != null
-                        ? $"7TV returned HTTP {e.StatusCode}."
-                        : e.Message;
-
-                    logger.LogError($"{message} Some 7TV emotes may not be present for this session.");
-                }
-                catch (TaskCanceledException ex) when (ex.Message.Contains("HttpClient.Timeout"))
-                {
-                    logger.LogError("7TV timed out. Some 7TV emotes may not be present for this session.");
+                    LogProviderException(ex, "7TV", logger);
                 }
             }
 
             return returnList;
 
-            static async Task FetchEmoteImages(IReadOnlyCollection<Comment> comments, IEnumerable<EmoteResponseItem> emoteResponse, ICollection<TwitchEmote> returnList,
+            static async Task FetchEmoteImages([AllowNull] IEnumerable<Comment> comments, IEnumerable<EmoteResponseItem> emoteResponse, ICollection<TwitchEmote> returnList,
                 ISet<string> alreadyAdded, DirectoryInfo cacheFolder, ITaskLogger logger, CancellationToken cancellationToken)
             {
                 if (!cacheFolder.Exists)
                     cacheFolder = CreateDirectory(cacheFolder.FullName);
 
                 IEnumerable<EmoteResponseItem> emoteResponseQuery;
-                if (comments.Count == 0)
+                if (comments is null)
                 {
                     emoteResponseQuery = emoteResponse;
                 }
@@ -473,16 +488,18 @@ namespace TwitchDownloaderCore
                 {
                     emoteResponseQuery = from emote in emoteResponse
                         where !alreadyAdded.Contains(emote.Code)
-                        let pattern = $@"(?<=^|\s){Regex.Escape(emote.Code)}(?=$|\s)"
-                        where comments.Any(comment => Regex.IsMatch(comment.message.body, pattern))
+                        let regex = new Regex($@"(?<=^|\s){Regex.Escape(emote.Code)}(?=$|\s)")
+                        where comments.Any(comment => regex.IsMatch(comment.message.body))
                         select emote;
                 }
 
                 foreach (var emote in emoteResponseQuery)
                 {
+                    var emoteUrl = emote.ImageUrl.Replace("[scale]", "2");
+
                     try
                     {
-                        var imageData = await GetImage(cacheFolder, emote.ImageUrl.Replace("[scale]", "2"), emote.Id, 2, emote.ImageType, logger, cancellationToken);
+                        var imageData = await GetImage(cacheFolder, emoteUrl, emote.Id, 2, emote.ImageType, logger, cancellationToken);
                         var newEmote = new TwitchEmote(imageData, EmoteProvider.ThirdParty, 2, emote.Id, emote.Code);
                         newEmote.IsZeroWidth = emote.IsZeroWidth;
 
@@ -491,9 +508,26 @@ namespace TwitchDownloaderCore
                     }
                     catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
                     {
-                        logger.LogVerbose($"Got HTTP {ex.StatusCode} when fetching {emote.Code} ({emote.ImageUrl}).");
+                        logger.LogWarning($"Got {(int)ex.StatusCode}: {ex.StatusCode} when fetching {emote.Code} ({emoteUrl}).");
                     }
                 }
+            }
+
+            static void LogProviderException(HttpRequestException ex, string providerName, ITaskLogger logger)
+            {
+                string message;
+                if (ex.Message.Contains("HttpClient.Timeout"))
+                {
+                    message = $"{providerName} timed out.";
+                }
+                else
+                {
+                    message = ex.StatusCode.HasValue
+                        ? $"{providerName} returned {(int)ex.StatusCode}: {ex.StatusCode}."
+                        : ex.Message;
+                }
+
+                logger.LogError($"{message} Some {providerName} emotes may not be present for this session.");
             }
         }
 
@@ -854,10 +888,10 @@ namespace TwitchDownloaderCore
 
                     var cheerNodesQuery = from node in cheerGroup.nodes
                         where !alreadyAdded.Contains(node.prefix)
-                        let pattern = $@"(?<=^|\s){Regex.Escape(node.prefix)}(?=[1-9])"
+                        let regex = new Regex($@"(?<=^|\s){Regex.Escape(node.prefix)}(?=[1-9])")
                         where comments
                             .Where(comment => comment.message.bits_spent > 0)
-                            .Any(comment => Regex.IsMatch(comment.message.body, pattern))
+                            .Any(comment => regex.IsMatch(comment.message.body))
                         select node;
 
                     foreach (CheerNode node in cheerNodesQuery)
@@ -1138,6 +1172,15 @@ namespace TwitchDownloaderCore
 
             var chapterResponse = await response.Content.ReadFromJsonAsync<GqlVideoChapterResponse>();
             chapterResponse.data.video.moments ??= new VideoMomentConnection { edges = new List<VideoMomentEdge>() };
+
+            // For some reason durations can be negative sometimes
+            foreach (var edge in chapterResponse.data.video.moments.edges)
+            {
+                if (edge.node.durationMilliseconds < 0)
+                {
+                    edge.node.durationMilliseconds = 0;
+                }
+            }
 
             // When downloading VODs of currently-airing streams, the last chapter lacks a duration
             if (chapterResponse.data.video.moments.edges.LastOrDefault() is { } lastEdge && lastEdge.node.durationMilliseconds is 0)

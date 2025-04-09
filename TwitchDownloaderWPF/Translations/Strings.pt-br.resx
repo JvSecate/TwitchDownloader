@@ -1022,4 +1022,22 @@
   <data name="FilenameParameterTrimLengthCustomTooltip" xml:space="preserve">
     <value>A duração (incluindo o corte) do vídeo/clipe/chat em um formato personalizável.</value>
   </data>
+  <data name="VideoTypeAllVideos" xml:space="preserve">
+    <value>All Videos</value>
+  </data>
+  <data name="VideoTypePastBroadcasts" xml:space="preserve">
+    <value>Broadcasts</value>
+  </data>
+  <data name="VideoTypeHighlights" xml:space="preserve">
+    <value>Highlights</value>
+  </data>
+  <data name="VideoTypeUploads" xml:space="preserve">
+    <value>Uploads</value>
+  </data>
+  <data name="DelayDownload" xml:space="preserve">
+    <value>Delay Download Until Broadcast Finished</value>
+  </data>
+  <data name="ReduceMotion" xml:space="preserve">
+    <value>Reduce Motion:</value>
+  </data>
 </root>

@@ -28,6 +28,7 @@ namespace TwitchDownloaderWPF
         public int cursorIndex = 0;
         public User currentChannel;
         public string period = "";
+        public string videoType = "";
         public int videoCount = 50;
 
         public WindowMassDownload(DownloadType type)
@@ -37,8 +38,11 @@ namespace TwitchDownloaderWPF
             itemList.ItemsSource = videoList;
             if (downloaderType == DownloadType.Video)
             {
-                ComboSortByDate.Visibility = Visibility.Hidden;
-                LabelSort.Visibility = Visibility.Hidden;
+                ComboSortByDate.Visibility = Visibility.Collapsed;
+            }
+            else if (downloaderType == DownloadType.Clip)
+            {
+                ComboSortByVideoType.Visibility = Visibility.Collapsed;
             }
             btnNext.IsEnabled = false;
             btnPrev.IsEnabled = false;
@@ -90,7 +94,10 @@ namespace TwitchDownloaderWPF
             if (!IsInitialized)
                 return;
 
-            StatusImage.Visibility = Visibility.Visible;
+            if (!Settings.Default.ReduceMotion)
+            {
+                StatusImage.Visibility = Visibility.Visible;
+            }
 
             if (string.IsNullOrWhiteSpace(currentChannel?.login))
             {
@@ -112,7 +119,7 @@ namespace TwitchDownloaderWPF
                 GqlVideoSearchResponse res;
                 try
                 {
-                    res = await TwitchHelper.GetGqlVideos(currentChannel.login, currentCursor, videoCount);
+                    res = await TwitchHelper.GetGqlVideos(currentChannel.login, currentCursor, videoCount, videoType);
                 }
                 catch (Exception ex)
                 {
@@ -307,6 +314,13 @@ namespace TwitchDownloaderWPF
         private async void ComboSortByDate_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             period = ((ComboBoxItem)ComboSortByDate.SelectedItem).Tag.ToString();
+            ResetLists();
+            await UpdateList();
+        }
+
+        private async void ComboSortByVideoType_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            videoType = ((ComboBoxItem)ComboSortByVideoType.SelectedItem).Tag.ToString();
             ResetLists();
             await UpdateList();
         }

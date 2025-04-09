@@ -153,8 +153,6 @@ namespace TwitchDownloaderWPF
                     viewCount = videoInfo.data.video.viewCount;
                     game = videoInfo.data.video.game?.displayName ?? Translations.Strings.UnknownGame;
 
-                    numStartHour.Maximum = (int)vodLength.TotalHours;
-                    numStartMinute.Maximum = 59;
                     var urlTimeCodeMatch = TwitchRegex.UrlTimeCode.Match(textUrl.Text);
                     if (urlTimeCodeMatch.Success)
                     {
@@ -171,9 +169,18 @@ namespace TwitchDownloaderWPF
                         numStartSecond.Value = 0;
                     }
 
-                    numEndHour.Maximum = (int)vodLength.TotalHours;
+                    if (vodLength > TimeSpan.Zero)
+                    {
+                        numStartHour.Maximum = (int)vodLength.TotalHours;
+                        numEndHour.Maximum = (int)vodLength.TotalHours;
+                    }
+                    else
+                    {
+                        numStartHour.Maximum = 48;
+                        numEndHour.Maximum = 48;
+                    }
+
                     numEndHour.Value = (int)vodLength.TotalHours;
-                    numEndMinute.Maximum = 59;
                     numEndMinute.Value = vodLength.Minutes;
                     numEndSecond.Value = vodLength.Seconds;
                     labelLength.Text = vodLength.ToString("c");
@@ -351,11 +358,13 @@ namespace TwitchDownloaderWPF
             };
             settings.ShowDialog();
             btnDonate.Visibility = Settings.Default.HideDonation ? Visibility.Collapsed : Visibility.Visible;
+            statusImage.Visibility = Settings.Default.ReduceMotion ? Visibility.Collapsed : Visibility.Visible;
         }
 
         private void Page_Loaded(object sender, RoutedEventArgs e)
         {
             btnDonate.Visibility = Settings.Default.HideDonation ? Visibility.Collapsed : Visibility.Visible;
+            statusImage.Visibility = Settings.Default.ReduceMotion ? Visibility.Collapsed : Visibility.Visible;
         }
 
         private void NumChatDownloadThreads_ValueChanged(object sender, HandyControl.Data.FunctionEventArgs<double> e)

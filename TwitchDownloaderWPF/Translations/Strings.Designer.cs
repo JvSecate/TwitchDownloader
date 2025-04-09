@@ -591,6 +591,15 @@ namespace TwitchDownloaderWPF.Translations {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Delay Download Until Broadcast Finished.
+        /// </summary>
+        public static string DelayDownload {
+            get {
+                return ResourceManager.GetString("DelayDownload", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Delete.
         /// </summary>
         public static string DeleteCacheColumnHeader {
@@ -1263,8 +1272,8 @@ namespace TwitchDownloaderWPF.Translations {
             get {
                 return ResourceManager.GetString("HideDonationButton", resourceCulture);
             }
-        }
-        
+        }        
+       
         /// <summary>
         ///   Looks up a localized string similar to Highlight Indent Scale:.
         /// </summary>
@@ -1658,6 +1667,15 @@ namespace TwitchDownloaderWPF.Translations {
         public static string Quality {
             get {
                 return ResourceManager.GetString("Quality", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Reduce Motion:.
+        /// </summary>
+        public static string ReduceMotion {
+            get {
+                return ResourceManager.GetString("ReduceMotion", resourceCulture);
             }
         }
         
@@ -2675,6 +2693,42 @@ namespace TwitchDownloaderWPF.Translations {
         public static string VideoTrimModeTooltip {
             get {
                 return ResourceManager.GetString("VideoTrimModeTooltip", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to All Videos.
+        /// </summary>
+        public static string VideoTypeAllVideos {
+            get {
+                return ResourceManager.GetString("VideoTypeAllVideos", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Highlights.
+        /// </summary>
+        public static string VideoTypeHighlights {
+            get {
+                return ResourceManager.GetString("VideoTypeHighlights", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Broadcasts.
+        /// </summary>
+        public static string VideoTypePastBroadcasts {
+            get {
+                return ResourceManager.GetString("VideoTypePastBroadcasts", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Uploads.
+        /// </summary>
+        public static string VideoTypeUploads {
+            get {
+                return ResourceManager.GetString("VideoTypeUploads", resourceCulture);
             }
         }
         
